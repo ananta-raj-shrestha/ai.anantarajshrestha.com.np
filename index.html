@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Infinity AI Assistant</title>
+    <style>
+      :root {
+        --color-bg-dark: #0f2027;
+        --color-bg-medium: #203a43;
+        --color-bg-light: #2c5364;
+        --color-card-bg: rgba(255, 255, 255, 0.1);
+        --color-chat-bg: rgba(0, 0, 0, 0.3);
+        --color-user-msg: rgba(0, 123, 255, 0.7);
+        --color-bot-msg: rgba(0, 0, 0, 0.4);
+        --color-button-primary: #00c6ff;
+        --color-button-hover: #0099cc;
+        --color-text-white: white;
+      }
+      body {
+        font-family: "Inter", Arial, sans-serif;
+        background: linear-gradient(
+          to right,
+          var(--color-bg-dark),
+          var(--color-bg-medium),
+          var(--color-bg-light)
+        );
+        margin: 0;
+        padding: 0;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 100vh;
+        color: var(--color-text-white);
+      }
+      .chat-container {
+        width: 100%;
+        max-width: 450px;
+        background: var(--color-card-bg);
+        backdrop-filter: blur(8px);
+        border-radius: 15px;
+        padding: 20px;
+        box-shadow: 0 0 30px rgba(0, 0, 0, 0.5);
+        margin: 20px;
+      }
+      #chatbox {
+        height: 400px;
+        overflow-y: auto;
+        padding: 10px;
+        border-radius: 10px;
+        background: var(--color-chat-bg);
+        scroll-behavior: smooth;
+      }
+      .msg {
+        margin: 10px 0;
+        padding: 12px;
+        border-radius: 10px;
+        line-height: 1.4;
+        max-width: 85%;
+        word-wrap: break-word;
+      }
+      .user {
+        background: var(--color-user-msg);
+        margin-left: auto;
+        text-align: right;
+        border-bottom-right-radius: 0;
+      }
+      .bot,
+      .loading {
+        background: var(--color-bot-msg);
+        text-align: left;
+        border-bottom-left-radius: 0;
+      }
+      .loading {
+        font-style: italic;
+        opacity: 0.8;
+      }
+      #input-area {
+        display: flex;
+        margin-top: 15px;
+        gap: 8px;
+      }
+      input {
+        flex: 1;
+        padding: 12px;
+        border: none;
+        border-radius: 10px;
+        outline: none;
+        font-size: 15px;
+        color: #333;
+      }
+      button {
+        padding: 12px 20px;
+        background: var(--color-button-primary);
+        border: none;
+        cursor: pointer;
+        border-radius: 10px;
+        font-weight: bold;
+        transition: 0.3s ease;
+        color: #0f2027;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+      }
+      button:hover:not(:disabled) {
+        background: var(--color-button-hover);
+        box-shadow: 0 6px 8px rgba(0, 0, 0, 0.3);
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="chat-container">
+      <h2 style="text-align: center; margin-bottom: 15px">
+        🤖 Infinity AI Assistant by Er. ANANT ARAJ SHRESTHA
+      </h2>
+
+      <div id="chatbox">
+        <div class="msg bot">
+          <b>AI:</b> Hello! I'm Infinity AI Assistant by Er. ANANT ARAJ
+          SHRESTHA. How can I assist you today?
+        </div>
+      </div>
+
+      <div id="input-area">
+        <input
+          id="input"
+          placeholder="Ask anything..."
+          onkeydown="handleKeyDown(event)"
+        />
+        <button id="send-button" onclick="sendMessage()">Send</button>
+      </div>
+    </div>
+
+    <script>
+      // === SECURITY BLOCKERS (FOR CASUAL USERS) ===
+
+      // 1. Disable Right-Click Context Menu (to block "Inspect Element")
+      document.addEventListener("contextmenu", (event) =>
+        event.preventDefault()
+      );
+
+      // 2. Disable Keyboard Shortcuts (F12, Ctrl+Shift+I, Ctrl+U)
+      document.onkeydown = function (e) {
+        // Disable F12
+        if (e.keyCode == 123) {
+          return false;
+        }
+        // Disable Ctrl+Shift+I (Windows/Linux) or Cmd+Option+I (Mac)
+        if (e.ctrlKey && e.shiftKey && e.keyCode == "I".charCodeAt(0)) {
+          return false;
+        }
+        // Disable Ctrl+U (View Source)
+        if (e.ctrlKey && e.keyCode == "U".charCodeAt(0)) {
+          return false;
+        }
+        // Disable Cmd+Option+U (Mac View Source)
+        if (e.metaKey && e.altKey && e.keyCode == "U".charCodeAt(0)) {
+          return false;
+        }
+      };
+
+      // ===========================================
+
+      // Global variables for API configuration
+      const MODEL_NAME = "gemini-2.5-flash-preview-09-2025";
+      const apiKey = ""; // API key is provided by the environment
+      const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent?key=${apiKey}`;
+
+      const SYSTEM_INSTRUCTION =
+        "You are a friendly, concise, and helpful AI assistant named 'Gemini Flash'. Respond to user queries in a professional and engaging manner.";
+
+      /**
+       * Converts the raw JSON text from the response into a readable string.
+       * @param {string} text The raw text from the LLM response.
+       * @returns {string} Cleaned text.
+       */
+      function cleanText(text) {
+        // Simple cleaning to remove potential markdown list dashes if they appear awkwardly
+        return text.replace(/^- /gm, "").trim();
+      }
+
+      /**
+       * Handles the Enter key press in the input field.
+       */
+      function handleKeyDown(event) {
+        if (event.key === "Enter") {
+          sendMessage();
+        }
+      }
+
+      /**
+       * Sends the message to the Gemini API with exponential backoff for retries.
+       * @param {string} text The user's input text.
+       * @param {number} attempt The current retry attempt (starts at 1).
+       * @returns {Promise<string>} The AI's reply text.
+       */
+      async function fetchWithBackoff(text, attempt = 1) {
+        if (attempt > 5) {
+          throw new Error("Max retries reached. The server is unresponsive.");
+        }
+
+        const payload = {
+          contents: [{ parts: [{ text: text }] }],
+          systemInstruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
+          tools: [{ google_search: {} }], // Enable grounding for better answers
+        };
+
+        const headers = { "Content-Type": "application/json" };
+
+        try {
+          const response = await fetch(API_URL, {
+            method: "POST",
+            headers: headers,
+            body: JSON.stringify(payload),
+          });
+
+          if (!response.ok) {
+            // Handle HTTP errors (e.g., 429 Rate Limit, 500 Server Error)
+            if (response.status === 429 || response.status >= 500) {
+              const delay = Math.pow(2, attempt) * 1000 + Math.random() * 1000;
+              console.warn(
+                `Attempt ${attempt} failed. Retrying in ${delay / 1000}s...`
+              );
+              await new Promise((resolve) => setTimeout(resolve, delay));
+              return fetchWithBackoff(text, attempt + 1);
+            }
+            throw new Error(`HTTP error! Status: ${response.status}`);
+          }
+
+          const result = await response.json();
+          const reply = result?.candidates?.[0]?.content?.parts?.[0]?.text;
+
+          if (!reply) {
+            // Check for potential blockages or empty responses
+            const safetyRatings = result?.candidates?.[0]?.safetyRatings;
+            if (
+              safetyRatings &&
+              safetyRatings.some((r) => r.probability === "HIGH" && r.blocked)
+            ) {
+              return "Your query was blocked by safety settings. Please try rephrasing.";
+            }
+            return "Sorry, I received an empty response from the AI model.";
+          }
+
+          return reply;
+        } catch (error) {
+          // Handle network or JSON parsing errors
+          if (attempt < 5) {
+            const delay = Math.pow(2, attempt) * 1000 + Math.random() * 1000;
+            console.warn(
+              `Network/Fetch error on attempt ${attempt}. Retrying in ${
+                delay / 1000
+              }s...`,
+              error
+            );
+            await new Promise((resolve) => setTimeout(resolve, delay));
+            return fetchWithBackoff(text, attempt + 1);
+          }
+          console.error("Final network error:", error);
+          throw new Error(
+            `Failed to connect to the AI service: ${error.message}`
+          );
+        }
+      }
+
+      async function sendMessage() {
+        const input = document.getElementById("input");
+        const chatbox = document.getElementById("chatbox");
+        const sendButton = document.getElementById("send-button");
+        const text = input.value.trim();
+        if (!text) return;
+
+        // 1. Add User Message
+        chatbox.innerHTML += `<div class="msg user"><b>You:</b> ${text}</div>`;
+        input.value = "";
+
+        // 2. Add Loading Indicator
+        const loadingMsg = document.createElement("div");
+        loadingMsg.className = "msg bot loading";
+        loadingMsg.id = "loading-indicator";
+        loadingMsg.innerHTML = "<b>AI:</b> Thinking...";
+        chatbox.appendChild(loadingMsg);
+
+        chatbox.scrollTop = chatbox.scrollHeight;
+
+        // Disable input while waiting
+        input.disabled = true;
+        sendButton.disabled = true;
+
+        try {
+          // 3. Fetch AI Response
+          const reply = await fetchWithBackoff(text);
+
+          // 4. Update UI with AI Response
+          const finalReply = cleanText(reply);
+
+          // Remove loading indicator
+          loadingMsg.remove();
+
+          // Add the final bot message
+          chatbox.innerHTML += `<div class="msg bot"><b>AI:</b> ${finalReply}</div>`;
+        } catch (error) {
+          // Handle final error and display to user
+          loadingMsg.innerHTML = `<b>AI Error:</b> ${error.message}`;
+          loadingMsg.className = "msg bot"; // Change class to remove 'loading' style
+          console.error("Critical error in sendMessage:", error);
+        } finally {
+          // Re-enable input and scroll to bottom
+          input.disabled = false;
+          sendButton.disabled = false;
+          input.focus();
+          chatbox.scrollTop = chatbox.scrollHeight;
+        }
+      }
+    </script>
+  </body>
+</html>
